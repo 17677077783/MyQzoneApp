@@ -192,31 +192,25 @@ jobs:
                               JSONObject albumJson = new JSONObject(albumResult);
                               JSONArray albumList = albumJson.getJSONObject("data").getJSONArray("albumListModeSort");
 
-                              // ★★★ 临时修改：只测试第一个相册，避免大量请求 ★★★
+                              // 只取第一个相册进行测试，防止触发腾讯的频控限制
                               if (albumList.length() > 0) {
                                   JSONObject album = albumList.getJSONObject(0);
                                   String albumId = album.getString("id");
                                   String albumName = album.getString("name");
                                   
-                                  // 稍微等一下，避免触发腾讯的防刷机制
+                                  // 稍微等1.5秒，避免请求过快
                                   Thread.sleep(1500);
-                                  
-                                  // 请求相册里的照片
+
+                                  // ★★★ 修复点：去掉 callback，加上 _ 时间戳参数 ★★★
                                   String photoUrl = "https://h5.qzone.qq.com/proxy/domain/photo.qzone.qq.com/fcgi-bin/cgi_list_photo" +
                                           "?g_tk=" + gTk + "&uin=" + uin + "&hostUin=" + uin + "&format=json" +
                                           "&inCharset=utf-8&outCharset=utf-8&notice=0&platform=qzone&needNewCode=0" +
-                                          "&topicId=" + albumId + "&pageStart=0&count=500&mode=0&callback=shine0_Callback";
+                                          "&topicId=" + albumId + "&pageStart=0&count=100&mode=0" +
+                                          "&_=" + System.currentTimeMillis();
 
                                   String photoResult = httpGet(photoUrl, cookies, uin);
                                   
-                                  // 去掉 JSONP 外壳
-                                  int startIndex = photoResult.indexOf("(");
-                                  int endIndex = photoResult.lastIndexOf(")");
-                                  if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
-                                      photoResult = photoResult.substring(startIndex + 1, endIndex);
-                                  }
-
-                                  // ★★★ 直接把原始数据显示出来，看看钥匙到底叫什么名字 ★★★
+                                  // 直接显示原始数据（截断显示，防止太长），看看这次能不能拿到照片列表
                                   String displayMsg = photoResult;
                                   if (displayMsg.length() > 2000) displayMsg = displayMsg.substring(0, 2000) + "...(截断)";
                                   
