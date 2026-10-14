@@ -54,16 +54,6 @@ jobs:
                   versionCode 1
                   versionName "1.0"
               }
-              buildTypes {
-                  release { minifyEnabled false }
-              }
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-          }
-          dependencies {
-              implementation 'androidx.appcompat:appcompat:1.6.1'
           }
           EOF
 
@@ -72,7 +62,13 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-              <application android:label="MyQzoneApp" android:hardwareAccelerated="true" android:usesCleartextTraffic="true" android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+              <queries>
+                  <intent>
+                      <action android:name="android.intent.action.VIEW" />
+                      <data android:scheme="https" />
+                  </intent>
+              </queries>
+              <application android:label="MyQzoneApp" android:hardwareAccelerated="true" android:usesCleartextTraffic="true" android:theme="@android:style/Theme.DeviceDefault">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
@@ -86,20 +82,19 @@ jobs:
           cat << 'EOF' > app/src/main/java/com/example/myqzoneapp/MainActivity.java
           package com.example.myqzoneapp;
 
+          import android.app.Activity;
           import android.os.Bundle;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
-          import androidx.appcompat.app.AppCompatActivity;
+          import android.widget.TextView;
 
-          public class MainActivity extends AppCompatActivity {
-              private WebView webView;
-
+          public class MainActivity extends Activity {
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
                   try {
-                      webView = new WebView(this);
+                      WebView webView = new WebView(this);
                       WebSettings settings = webView.getSettings();
                       settings.setJavaScriptEnabled(true);
                       settings.setDomStorageEnabled(true);
@@ -107,11 +102,10 @@ jobs:
                       
                       webView.setWebViewClient(new WebViewClient());
                       webView.loadUrl("https://i.qq.com/");
-                      
                       setContentView(webView);
                   } catch (Throwable e) {
-                      android.widget.TextView tv = new android.widget.TextView(this);
-                      tv.setText("WebView初始化失败：\n\n" + e.toString());
+                      TextView tv = new TextView(this);
+                      tv.setText("WebView启动失败！错误原因：\n\n" + e.toString());
                       tv.setTextSize(14);
                       tv.setPadding(40, 40, 40, 40);
                       setContentView(tv);
