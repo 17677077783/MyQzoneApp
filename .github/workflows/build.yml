@@ -93,6 +93,11 @@ jobs:
           import android.widget.FrameLayout;
           import android.widget.TextView;
           import android.view.Gravity;
+          import java.io.BufferedReader;
+          import java.io.InputStream;
+          import java.io.InputStreamReader;
+          import java.net.HttpURLConnection;
+          import java.net.URL;
 
           public class MainActivity extends Activity {
               private WebView webView;
@@ -113,7 +118,7 @@ jobs:
                       webView.loadUrl("https://user.qzone.qq.com/");
                       
                       Button btn = new Button(this);
-                      btn.setText("获取登录凭证");
+                      btn.setText("获取相册列表");
                       btn.setAlpha(0.8f);
                       btn.setOnClickListener(v -> {
                           String cookies = CookieManager.getInstance().getCookie("https://user.qzone.qq.com");
@@ -123,10 +128,7 @@ jobs:
                                   .setMessage("请先在上方网页中登录 QQ 空间。")
                                   .setPositiveButton("知道了", null).show();
                           } else {
-                              new AlertDialog.Builder(MainActivity.this)
-                                  .setTitle("获取成功")
-                                  .setMessage("请复制以下全部文字发送给我：\n\n" + cookies)
-                                  .setPositiveButton("关闭", null).show();
+                              fetchAlbumList(cookies);
                           }
                       });
                       
@@ -151,6 +153,69 @@ jobs:
                       tv.setPadding(40, 40, 40, 40);
                       setContentView(tv);
                   }
+              }
+
+              private void fetchAlbumList(final String cookies) {
+                  new Thread(new Runnable() {
+                      @Override
+                      public void run() {
+                          try {
+                              String uin = "";
+                              String pSkey = "";
+                              for (String c : cookies.split(";")) {
+                                  if (c.trim().startsWith("uin=")) uin = c.trim().split("=")[1];
+                                  if (c.trim().startsWith("p_skey=")) pSkey = c.trim().split("=")[1];
+                              }
+                              
+                              if (uin.isEmpty() || pSkey.isEmpty()) {
+                                  showResult("解析失败", "无法从 Cookie 中提取 uin 或 p_skey");
+                                  return;
+                              }
+
+                              // 计算 g_tk
+                              int hash = 5381;
+                              for (char c : pSkey.toCharArray()) {
+                                  hash += (hash << 5) + c;
+                              }
+                              String gTk = String.valueOf(hash & 0x7fffffff);
+
+                              String urlStr = "https://h5.qzone.qq.com/proxy/domain/photo.qzone.qq.com/fcgi-bin/fcg_list_album_v3" +
+                                      "?g_tk=" + gTk + "&uin=" + uin + "&hostUin=" + uin + "&format=json" +
+                                      "&inCharset=utf-8&outCharset=utf-8&notice=0&platform=qzone&needNewCode=0&appid=4&pageNum=0&pageSize=100";
+
+                              URL url = new URL(urlStr);
+                              HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                              conn.setRequestMethod("GET");
+                              conn.setRequestProperty("Cookie", cookies);
+                              conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10)");
+                              conn.connect();
+
+                              InputStream is = conn.getInputStream();
+                              BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+                              StringBuilder sb = new StringBuilder();
+                              String line;
+                              while ((line = reader.readLine()) != null) { sb.append(line); }
+                              final String result = sb.toString();
+                              
+                              showResult("接口返回数据", result.substring(0, Math.min(result.length(), 2000)));
+                              
+                          } catch (final Exception e) {
+                              showResult("请求失败", e.toString());
+                          }
+                      }
+                  }).start();
+              }
+
+              private void showResult(final String title, final String msg) {
+                  runOnUiThread(new Runnable() {
+                      @Override
+                      public void run() {
+                          new AlertDialog.Builder(MainActivity.this)
+                              .setTitle(title)
+                              .setMessage(msg)
+                              .setPositiveButton("关闭", null).show();
+                      }
+                  });
               }
           }
           EOF
