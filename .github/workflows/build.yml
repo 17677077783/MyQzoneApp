@@ -54,6 +54,16 @@ jobs:
                   versionCode 1
                   versionName "1.0"
               }
+              buildTypes {
+                  release { minifyEnabled false }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
           }
           EOF
 
@@ -62,7 +72,7 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-              <application android:label="MyQzoneApp" android:theme="@android:style/Theme.DeviceDefault">
+              <application android:label="MyQzoneApp" android:hardwareAccelerated="true" android:usesCleartextTraffic="true" android:theme="@style/Theme.AppCompat.Light.NoActionBar">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
@@ -76,19 +86,36 @@ jobs:
           cat << 'EOF' > app/src/main/java/com/example/myqzoneapp/MainActivity.java
           package com.example.myqzoneapp;
 
-          import android.app.Activity;
           import android.os.Bundle;
-          import android.widget.TextView;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import androidx.appcompat.app.AppCompatActivity;
 
-          public class MainActivity extends Activity {
+          public class MainActivity extends AppCompatActivity {
+              private WebView webView;
+
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
-                  TextView tv = new TextView(this);
-                  tv.setText("App启动成功！\n\n没有闪退，一加 Android 17 的系统没有拦住我们！\n\n下一步：直接输入 Cookie 下载相册。");
-                  tv.setTextSize(18);
-                  tv.setPadding(50, 50, 50, 50);
-                  setContentView(tv);
+                  try {
+                      webView = new WebView(this);
+                      WebSettings settings = webView.getSettings();
+                      settings.setJavaScriptEnabled(true);
+                      settings.setDomStorageEnabled(true);
+                      settings.setUserAgentString("Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Mobile Safari/537.36");
+                      
+                      webView.setWebViewClient(new WebViewClient());
+                      webView.loadUrl("https://i.qq.com/");
+                      
+                      setContentView(webView);
+                  } catch (Throwable e) {
+                      android.widget.TextView tv = new android.widget.TextView(this);
+                      tv.setText("WebView初始化失败：\n\n" + e.toString());
+                      tv.setTextSize(14);
+                      tv.setPadding(40, 40, 40, 40);
+                      setContentView(tv);
+                  }
               }
           }
           EOF
