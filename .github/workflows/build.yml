@@ -198,7 +198,6 @@ jobs:
                                   String albumId = album.getString("id");
                                   String albumName = album.getString("name");
                                   
-                                  // 进度提示
                                   final int current = i + 1;
                                   runOnUiThread(() -> {
                                       new AlertDialog.Builder(MainActivity.this)
@@ -224,7 +223,14 @@ jobs:
                           "&topicId=" + albumId + "&pageStart=0&count=500&mode=0&callback=shine0_Callback";
 
                   String photoResult = httpGet(photoUrl, cookies, uin);
-                  photoResult = photoResult.substringAfter("(", "").substringBeforeLast(")");
+                  
+                  // ★★★ 修复点：用 Java 原生写法替换 Kotlin 语法 ★★★
+                  int startIndex = photoResult.indexOf("(");
+                  int endIndex = photoResult.lastIndexOf(")");
+                  if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
+                      photoResult = photoResult.substring(startIndex + 1, endIndex);
+                  }
+                  
                   JSONObject photoJson = new JSONObject(photoResult);
                   JSONArray photoList = photoJson.getJSONObject("data").getJSONArray("photoList");
 
@@ -233,7 +239,6 @@ jobs:
                       String rawUrl = photo.getString("raw");
                       String fileName = "photo_" + j + ".jpg";
                       
-                      // 下载并保存到 MediaStore
                       byte[] imageData = httpGetBytes(rawUrl, cookies, uin);
                       saveToMediaStore(imageData, fileName, albumName);
                   }
