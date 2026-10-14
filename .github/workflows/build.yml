@@ -190,59 +190,45 @@ jobs:
 
                               String albumResult = httpGet(albumUrl, cookies, uin);
                               JSONObject albumJson = new JSONObject(albumResult);
-                              
-                              // ★★★ 修复点：使用正确的键名 albumListModeSort ★★★
                               JSONArray albumList = albumJson.getJSONObject("data").getJSONArray("albumListModeSort");
 
-                              int totalAlbums = albumList.length();
-                              for (int i = 0; i < totalAlbums; i++) {
-                                  JSONObject album = albumList.getJSONObject(i);
+                              // ★★★ 临时修改：只测试第一个相册，避免大量请求 ★★★
+                              if (albumList.length() > 0) {
+                                  JSONObject album = albumList.getJSONObject(0);
                                   String albumId = album.getString("id");
                                   String albumName = album.getString("name");
                                   
-                                  final int current = i + 1;
-                                  runOnUiThread(() -> {
-                                      new AlertDialog.Builder(MainActivity.this)
-                                          .setTitle("正在下载")
-                                          .setMessage("进度：" + current + "/" + totalAlbums + "\n当前相册：" + albumName)
-                                          .setPositiveButton("后台继续", null).show();
-                                  });
+                                  // 稍微等一下，避免触发腾讯的防刷机制
+                                  Thread.sleep(1500);
+                                  
+                                  // 请求相册里的照片
+                                  String photoUrl = "https://h5.qzone.qq.com/proxy/domain/photo.qzone.qq.com/fcgi-bin/cgi_list_photo" +
+                                          "?g_tk=" + gTk + "&uin=" + uin + "&hostUin=" + uin + "&format=json" +
+                                          "&inCharset=utf-8&outCharset=utf-8&notice=0&platform=qzone&needNewCode=0" +
+                                          "&topicId=" + albumId + "&pageStart=0&count=500&mode=0&callback=shine0_Callback";
 
-                                  downloadAlbumPhotos(uin, gTk, cookies, albumId, albumName);
+                                  String photoResult = httpGet(photoUrl, cookies, uin);
+                                  
+                                  // 去掉 JSONP 外壳
+                                  int startIndex = photoResult.indexOf("(");
+                                  int endIndex = photoResult.lastIndexOf(")");
+                                  if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
+                                      photoResult = photoResult.substring(startIndex + 1, endIndex);
+                                  }
+
+                                  // ★★★ 直接把原始数据显示出来，看看钥匙到底叫什么名字 ★★★
+                                  String displayMsg = photoResult;
+                                  if (displayMsg.length() > 2000) displayMsg = displayMsg.substring(0, 2000) + "...(截断)";
+                                  
+                                  showResult("【探测】照片列表原始数据", displayMsg);
+                              } else {
+                                  showResult("提示", "没有找到相册。");
                               }
-                              showResult("全部下载完成", "所有相册已成功保存到系统相册的 QzoneDownload 文件夹下。");
                           } catch (final Exception e) {
                               showResult("下载失败", e.toString());
                           }
                       }
                   }).start();
-              }
-
-              private void downloadAlbumPhotos(String uin, String gTk, String cookies, String albumId, String albumName) throws Exception {
-                  String photoUrl = "https://h5.qzone.qq.com/proxy/domain/photo.qzone.qq.com/fcgi-bin/cgi_list_photo" +
-                          "?g_tk=" + gTk + "&uin=" + uin + "&hostUin=" + uin + "&format=json" +
-                          "&inCharset=utf-8&outCharset=utf-8&notice=0&platform=qzone&needNewCode=0" +
-                          "&topicId=" + albumId + "&pageStart=0&count=500&mode=0&callback=shine0_Callback";
-
-                  String photoResult = httpGet(photoUrl, cookies, uin);
-                  
-                  int startIndex = photoResult.indexOf("(");
-                  int endIndex = photoResult.lastIndexOf(")");
-                  if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
-                      photoResult = photoResult.substring(startIndex + 1, endIndex);
-                  }
-                  
-                  JSONObject photoJson = new JSONObject(photoResult);
-                  JSONArray photoList = photoJson.getJSONObject("data").getJSONArray("photoList");
-
-                  for (int j = 0; j < photoList.length(); j++) {
-                      JSONObject photo = photoList.getJSONObject(j);
-                      String rawUrl = photo.getString("raw");
-                      String fileName = "photo_" + j + ".jpg";
-                      
-                      byte[] imageData = httpGetBytes(rawUrl, cookies, uin);
-                      saveToMediaStore(imageData, fileName, albumName);
-                  }
               }
 
               private String httpGet(String urlStr, String cookies, String uin) throws Exception {
@@ -259,39 +245,6 @@ jobs:
                   String line;
                   while ((line = reader.readLine()) != null) { sb.append(line); }
                   return sb.toString();
-              }
-
-              private byte[] httpGetBytes(String urlStr, String cookies, String uin) throws Exception {
-                  URL url = new URL(urlStr);
-                  HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                  conn.setRequestMethod("GET");
-                  conn.setRequestProperty("Cookie", cookies);
-                  conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Mobile Safari/537.36");
-                  conn.setRequestProperty("Referer", "https://user.qzone.qq.com/" + uin);
-                  conn.connect();
-                  InputStream is = conn.getInputStream();
-                  java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-                  byte[] buffer = new byte[4096];
-                  int len;
-                  while ((len = is.read(buffer)) != -1) { baos.write(buffer, 0, len); }
-                  return baos.toByteArray();
-              }
-
-              private void saveToMediaStore(byte[] data, String fileName, String albumName) {
-                  try {
-                      ContentValues values = new ContentValues();
-                      values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
-                      values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
-                      values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/QzoneDownload/" + albumName);
-                      Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-                      if (uri != null) {
-                          OutputStream os = getContentResolver().openOutputStream(uri);
-                          os.write(data);
-                          os.close();
-                      }
-                  } catch (Exception e) {
-                      // 忽略单张图片保存失败
-                  }
               }
 
               private void showResult(final String title, final String msg) {
