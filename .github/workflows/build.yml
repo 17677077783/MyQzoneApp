@@ -13,7 +13,7 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: actions/gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.2'
 
@@ -83,30 +83,71 @@ jobs:
           package com.example.myqzoneapp;
 
           import android.app.Activity;
+          import android.app.AlertDialog;
           import android.os.Bundle;
+          import android.webkit.CookieManager;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
+          import android.widget.Button;
+          import android.widget.FrameLayout;
           import android.widget.TextView;
+          import android.view.Gravity;
 
           public class MainActivity extends Activity {
+              private WebView webView;
+
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
                   try {
-                      WebView webView = new WebView(this);
+                      FrameLayout layout = new FrameLayout(this);
+                      
+                      webView = new WebView(this);
                       WebSettings settings = webView.getSettings();
                       settings.setJavaScriptEnabled(true);
                       settings.setDomStorageEnabled(true);
                       settings.setUserAgentString("Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Mobile Safari/537.36");
                       
                       webView.setWebViewClient(new WebViewClient());
-                      webView.loadUrl("https://i.qq.com/");
-                      setContentView(webView);
+                      webView.loadUrl("https://user.qzone.qq.com/");
+                      
+                      Button btn = new Button(this);
+                      btn.setText("获取登录凭证");
+                      btn.setAlpha(0.8f);
+                      btn.setOnClickListener(v -> {
+                          String cookies = CookieManager.getInstance().getCookie("https://user.qzone.qq.com");
+                          if (cookies == null || !cookies.contains("p_skey")) {
+                              new AlertDialog.Builder(MainActivity.this)
+                                  .setTitle("未登录")
+                                  .setMessage("请先在上方网页中登录 QQ 空间。")
+                                  .setPositiveButton("知道了", null).show();
+                          } else {
+                              new AlertDialog.Builder(MainActivity.this)
+                                  .setTitle("获取成功")
+                                  .setMessage("请复制以下全部文字发送给我：\n\n" + cookies)
+                                  .setPositiveButton("关闭", null).show();
+                          }
+                      });
+                      
+                      FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
+                          FrameLayout.LayoutParams.WRAP_CONTENT,
+                          FrameLayout.LayoutParams.WRAP_CONTENT
+                      );
+                      params.gravity = Gravity.BOTTOM | Gravity.END;
+                      params.bottomMargin = 100;
+                      params.rightMargin = 50;
+                      
+                      layout.addView(webView, new FrameLayout.LayoutParams(
+                          FrameLayout.LayoutParams.MATCH_PARENT,
+                          FrameLayout.LayoutParams.MATCH_PARENT
+                      ));
+                      layout.addView(btn, params);
+                      setContentView(layout);
+                      
                   } catch (Throwable e) {
                       TextView tv = new TextView(this);
-                      tv.setText("WebView启动失败！错误原因：\n\n" + e.toString());
-                      tv.setTextSize(14);
+                      tv.setText("出错啦：\n" + e.toString());
                       tv.setPadding(40, 40, 40, 40);
                       setContentView(tv);
                   }
