@@ -190,7 +190,9 @@ jobs:
 
                               String albumResult = httpGet(albumUrl, cookies, uin);
                               JSONObject albumJson = new JSONObject(albumResult);
-                              JSONArray albumList = albumJson.getJSONObject("data").getJSONArray("albumList");
+                              
+                              // ★★★ 修复点：使用正确的键名 albumListModeSort ★★★
+                              JSONArray albumList = albumJson.getJSONObject("data").getJSONArray("albumListModeSort");
 
                               int totalAlbums = albumList.length();
                               for (int i = 0; i < totalAlbums; i++) {
@@ -224,7 +226,6 @@ jobs:
 
                   String photoResult = httpGet(photoUrl, cookies, uin);
                   
-                  // ★★★ 修复点：用 Java 原生写法替换 Kotlin 语法 ★★★
                   int startIndex = photoResult.indexOf("(");
                   int endIndex = photoResult.lastIndexOf(")");
                   if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
