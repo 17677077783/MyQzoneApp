@@ -167,6 +167,9 @@ jobs:
                                   if (c.trim().startsWith("p_skey=")) pSkey = c.trim().split("=")[1];
                               }
                               
+                              // 关键修复1：去掉 uin 前面的 "o"
+                              if (uin.startsWith("o")) uin = uin.substring(1);
+                              
                               if (uin.isEmpty() || pSkey.isEmpty()) {
                                   showResult("解析失败", "无法从 Cookie 中提取 uin 或 p_skey");
                                   return;
@@ -187,7 +190,11 @@ jobs:
                               HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                               conn.setRequestMethod("GET");
                               conn.setRequestProperty("Cookie", cookies);
-                              conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10)");
+                              conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Mobile Safari/537.36");
+                              // 关键修复2：添加 Referer 防盗链
+                              conn.setRequestProperty("Referer", "https://user.qzone.qq.com/" + uin);
+                              conn.setConnectTimeout(10000);
+                              conn.setReadTimeout(10000);
                               conn.connect();
 
                               InputStream is = conn.getInputStream();
