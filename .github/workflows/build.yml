@@ -121,7 +121,6 @@ jobs:
                       webView.setWebViewClient(new WebViewClient());
                       webView.loadUrl("https://user.qzone.qq.com/");
                       
-                      // 注入 JS 桥接，用于接收网页抓取到的图片链接
                       webView.addJavascriptInterface(new Object() {
                           @JavascriptInterface
                           public void onImagesFound(final String jsonUrls) {
@@ -131,7 +130,7 @@ jobs:
                                       if (arr.length() == 0) {
                                           new AlertDialog.Builder(MainActivity.this)
                                               .setTitle("提示")
-                                              .setMessage("当前页面没有检测到图片，请点击进入相册详情页后再试。")
+                                              .setMessage("当前页面没有检测到图片，请点击进入相册详情页，并稍微往下滑动加载几张图片后再试。")
                                               .setPositiveButton("知道了", null).show();
                                           return;
                                       }
@@ -151,14 +150,15 @@ jobs:
                       btn.setText("一键下载本相册图片");
                       btn.setAlpha(0.8f);
                       btn.setOnClickListener(v -> {
-                          // 利用网页自身的能力去抓取图片，绕过所有接口风控
+                          // 使用正则直接扫描整个网页源码里的图片链接，绝不漏抓
                           String jsCode = "javascript:(function(){" +
-                                  "var imgs = document.querySelectorAll('img');" +
+                                  "var html = document.body.innerHTML;" +
+                                  "var regex = /https?:\\/\\/[^\"'\\s]+photo\\.store\\.qq\\.com[^\"'\\s]+/g;" +
                                   "var urls = [];" +
-                                  "for (var i = 0; i < imgs.length; i++) {" +
-                                  "  var src = imgs[i].src || imgs[i].getAttribute('data-src');" +
-                                  "  if (src && src.indexOf('photo.store.qq.com') > -1 && urls.indexOf(src) === -1) {" +
-                                  "    urls.push(src.replace(/\\/psc\\//, '/psc/').replace(/&ek=1/g, '').replace(/&sce=0-12-12/g, ''));" +
+                                  "var match;" +
+                                  "while ((match = regex.exec(html)) !== null) {" +
+                                  "  if (urls.indexOf(match[0]) === -1) {" +
+                                  "    urls.push(match[0]);" +
                                   "  }" +
                                   "}" +
                                   "AndroidBridge.onImagesFound(JSON.stringify(urls));" +
@@ -197,7 +197,6 @@ jobs:
                           for (int i = 0; i < urls.length(); i++) {
                               try {
                                   String imgUrl = urls.getString(i);
-                                  // 下载图片
                                   URL url = new URL(imgUrl);
                                   HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                                   conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10)");
@@ -209,7 +208,6 @@ jobs:
                                   while ((len = is.read(buffer)) != -1) { baos.write(buffer, 0, len); }
                                   byte[] data = baos.toByteArray();
                                   
-                                  // 保存到手机相册
                                   ContentValues values = new ContentValues();
                                   values.put(MediaStore.Images.Media.DISPLAY_NAME, "qzone_" + System.currentTimeMillis() + "_" + i + ".jpg");
                                   values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
@@ -221,7 +219,7 @@ jobs:
                                       os.close();
                                       success++;
                                   }
-                                  Thread.sleep(300); // 稍微歇一下，模拟人工操作
+                                  Thread.sleep(300);
                               } catch (Exception ignored) {}
                           }
                           final int finalSuccess = success;
