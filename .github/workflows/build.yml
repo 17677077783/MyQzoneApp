@@ -90,7 +90,6 @@ jobs:
           import android.os.Bundle;
           import android.os.Environment;
           import android.provider.MediaStore;
-          import android.webkit.CookieManager;
           import android.webkit.JavascriptInterface;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
@@ -123,45 +122,70 @@ jobs:
                       
                       webView.addJavascriptInterface(new Object() {
                           @JavascriptInterface
-                          public void onImagesFound(final String jsonUrls) {
+                          public void onMediaFound(final String jsonUrls) {
                               runOnUiThread(() -> {
                                   try {
                                       org.json.JSONArray arr = new org.json.JSONArray(jsonUrls);
                                       if (arr.length() == 0) {
                                           new AlertDialog.Builder(MainActivity.this)
                                               .setTitle("提示")
-                                              .setMessage("当前页面没有检测到图片，请点击进入相册详情页，并稍微往下滑动加载几张图片后再试。")
+                                              .setMessage("未能获取到图片或视频，请确认当前在相册页面且已登录。")
                                               .setPositiveButton("知道了", null).show();
                                           return;
                                       }
                                       
                                       new AlertDialog.Builder(MainActivity.this)
                                           .setTitle("开始下载")
-                                          .setMessage("检测到 " + arr.length() + " 张原图，正在后台下载...")
-                                          .setPositiveButton("开始", (d, w) -> downloadImagesInBackground(arr)).show();
+                                          .setMessage("检测到 " + arr.length() + " 个媒体文件，正在后台下载...")
+                                          .setPositiveButton("开始", (d, w) -> downloadMediaInBackground(arr)).show();
                                   } catch (Exception e) {
                                       e.printStackTrace();
                                   }
                               });
                           }
+                          
+                          @JavascriptInterface
+                          public void onError(final String errorMsg) {
+                              runOnUiThread(() -> {
+                                  new AlertDialog.Builder(MainActivity.this)
+                                      .setTitle("获取失败")
+                                      .setMessage(errorMsg)
+                                      .setPositiveButton("知道了", null).show();
+                              });
+                          }
                       }, "AndroidBridge");
                       
                       Button btn = new Button(this);
-                      btn.setText("一键下载本相册图片");
+                      btn.setText("一键全量下载本相册");
                       btn.setAlpha(0.8f);
                       btn.setOnClickListener(v -> {
-                          // 使用正则直接扫描整个网页源码里的图片链接，绝不漏抓
                           String jsCode = "javascript:(function(){" +
-                                  "var html = document.body.innerHTML;" +
-                                  "var regex = /https?:\\/\\/[^\"'\\s]+photo\\.store\\.qq\\.com[^\"'\\s]+/g;" +
-                                  "var urls = [];" +
-                                  "var match;" +
-                                  "while ((match = regex.exec(html)) !== null) {" +
-                                  "  if (urls.indexOf(match[0]) === -1) {" +
-                                  "    urls.push(match[0]);" +
+                                  "var match = window.location.href.match(/album\\/([a-zA-Z0-9]+)/);" +
+                                  "if (!match) { AndroidBridge.onError('请先点击进入一个相册详情页！'); return; }" +
+                                  "var topicId = match[1];" +
+                                  "var cookies = document.cookie;" +
+                                  "var uinMatch = cookies.match(/uin=o?(\\d+)/);" +
+                                  "var uin = uinMatch ? uinMatch[1] : '';" +
+                                  "var pSkeyMatch = cookies.match(/p_skey=([^;]+)/);" +
+                                  "var pSkey = pSkeyMatch ? pSkeyMatch[1] : '';" +
+                                  "var g_tk = 5381;" +
+                                  "for (var i = 0; i < pSkey.length; i++) { g_tk += (g_tk << 5) + pSkey.charCodeAt(i); }" +
+                                  "g_tk = g_tk & 0x7fffffff;" +
+                                  "var apiUrl = 'https://h5.qzone.qq.com/proxy/domain/photo.qzone.qq.com/fcgi-bin/cgi_list_photo?g_tk=' + g_tk + '&uin=' + uin + '&hostUin=' + uin + '&format=json&inCharset=utf-8&outCharset=utf-8&notice=0&platform=qzone&needNewCode=0&topicId=' + topicId + '&pageStart=0&count=500&mode=0';" +
+                                  "fetch(apiUrl).then(function(res) { return res.text(); }).then(function(data) {" +
+                                  "  var start = data.indexOf('(');" +
+                                  "  var end = data.lastIndexOf(')');" +
+                                  "  var jsonStr = (start !== -1 && end !== -1) ? data.substring(start + 1, end) : data;" +
+                                  "  var json = JSON.parse(jsonStr);" +
+                                  "  var photoList = json.data.photoList;" +
+                                  "  var urls = [];" +
+                                  "  for (var i = 0; i < photoList.length; i++) {" +
+                                  "    var photo = photoList[i];" +
+                                  "    if (photo.raw) urls.push(photo.raw);" +
+                                  "    if (photo.video && photo.video.url) urls.push(photo.video.url);" +
                                   "  }" +
-                                  "}" +
-                                  "AndroidBridge.onImagesFound(JSON.stringify(urls));" +
+                                  "  AndroidBridge.onMediaFound(JSON.stringify(urls));" +
+                                  "}).catch(function(err) { AndroidBridge.onError('请求失败：' + err.toString()); });" +
                                   "})();";
                           webView.loadUrl(jsCode);
                       });
@@ -189,15 +213,18 @@ jobs:
                   }
               }
 
-              private void downloadImagesInBackground(org.json.JSONArray urls) {
+              private void downloadMediaInBackground(org.json.JSONArray urls) {
                   new Thread(new Runnable() {
                       @Override
                       public void run() {
-                          int success = 0;
+                          int imgSuccess = 0;
+                          int vidSuccess = 0;
                           for (int i = 0; i < urls.length(); i++) {
                               try {
-                                  String imgUrl = urls.getString(i);
-                                  URL url = new URL(imgUrl);
+                                  String urlStr = urls.getString(i);
+                                  boolean isVideo = urlStr.contains(".mp4") || urlStr.contains("video.qzone.qq.com");
+                                  
+                                  URL url = new URL(urlStr);
                                   HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                                   conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10)");
                                   conn.setRequestProperty("Referer", "https://user.qzone.qq.com/");
@@ -209,24 +236,35 @@ jobs:
                                   byte[] data = baos.toByteArray();
                                   
                                   ContentValues values = new ContentValues();
-                                  values.put(MediaStore.Images.Media.DISPLAY_NAME, "qzone_" + System.currentTimeMillis() + "_" + i + ".jpg");
-                                  values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
-                                  values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/QzoneDownload");
-                                  Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+                                  Uri uri;
+                                  
+                                  if (isVideo) {
+                                      values.put(MediaStore.Video.Media.DISPLAY_NAME, "qzone_video_" + System.currentTimeMillis() + "_" + i + ".mp4");
+                                      values.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4");
+                                      values.put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/QzoneDownload");
+                                      uri = getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
+                                  } else {
+                                      values.put(MediaStore.Images.Media.DISPLAY_NAME, "qzone_img_" + System.currentTimeMillis() + "_" + i + ".jpg");
+                                      values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+                                      values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/QzoneDownload");
+                                      uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+                                  }
+                                  
                                   if (uri != null) {
                                       OutputStream os = getContentResolver().openOutputStream(uri);
                                       os.write(data);
                                       os.close();
-                                      success++;
+                                      if (isVideo) vidSuccess++; else imgSuccess++;
                                   }
-                                  Thread.sleep(300);
+                                  Thread.sleep(200);
                               } catch (Exception ignored) {}
                           }
-                          final int finalSuccess = success;
+                          final int finalImg = imgSuccess;
+                          final int finalVid = vidSuccess;
                           runOnUiThread(() -> {
                               new AlertDialog.Builder(MainActivity.this)
                                   .setTitle("下载完成")
-                                  .setMessage("成功保存 " + finalSuccess + " 张图片到相册的 QzoneDownload 文件夹。")
+                                  .setMessage("成功保存图片 " + finalImg + " 张，视频 " + finalVid + " 个。\n请在手机相册/图库中查看 QzoneDownload 文件夹。")
                                   .setPositiveButton("好", null).show();
                           });
                       }
