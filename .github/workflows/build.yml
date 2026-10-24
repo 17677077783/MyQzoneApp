@@ -90,6 +90,7 @@ jobs:
           import android.os.Bundle;
           import android.os.Environment;
           import android.provider.MediaStore;
+          import android.webkit.CookieManager;
           import android.webkit.JavascriptInterface;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
@@ -114,8 +115,14 @@ jobs:
                       webView = new WebView(this);
                       WebSettings settings = webView.getSettings();
                       settings.setJavaScriptEnabled(true);
-                      settings.setDomStorageEnabled(true);
+                      settings.setDomStorageEnabled(true); // 开启本地存储
+                      settings.setDatabaseEnabled(true);   // 开启数据库
                       settings.setUserAgentString("Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Mobile Safari/537.36");
+                      
+                      // ★★★ 核心修复：开启 Cookie 持久化存储 ★★★
+                      CookieManager cookieManager = CookieManager.getInstance();
+                      cookieManager.setAcceptCookie(true);
+                      cookieManager.setAcceptThirdPartyCookies(webView, true); // 允许第三方 Cookie
                       
                       webView.setWebViewClient(new WebViewClient());
                       webView.loadUrl("https://user.qzone.qq.com/");
@@ -129,7 +136,7 @@ jobs:
                                       if (arr.length() == 0) {
                                           new AlertDialog.Builder(MainActivity.this)
                                               .setTitle("提示")
-                                              .setMessage("未能获取到图片或视频，请确认当前在相册页面且已登录。")
+                                              .setMessage("未能获取到媒体文件，可能是相册为空或被腾讯风控拦截。")
                                               .setPositiveButton("知道了", null).show();
                                           return;
                                       }
@@ -160,9 +167,16 @@ jobs:
                       btn.setAlpha(0.8f);
                       btn.setOnClickListener(v -> {
                           String jsCode = "javascript:(function(){" +
-                                  "var match = window.location.href.match(/album\\/([a-zA-Z0-9]+)/);" +
-                                  "if (!match) { AndroidBridge.onError('请先点击进入一个相册详情页！'); return; }" +
-                                  "var topicId = match[1];" +
+                                  "var topicId = null;" +
+                                  "var href = window.location.href;" +
+                                  "var match = href.match(/\\/(?:album|list|photo)\\/([a-zA-Z0-9]+)/) || href.match(/[?&]id=([a-zA-Z0-9]+)/);" +
+                                  "if (match) { topicId = match[1]; }" +
+                                  "if (!topicId) {" +
+                                  "  var html = document.body.innerHTML;" +
+                                  "  var idMatch = html.match(/\"topicId\"\\s*:\\s*\"([a-zA-Z0-9]+)\"/) || html.match(/\"albumId\"\\s*:\\s*\"([a-zA-Z0-9]+)\"/);" +
+                                  "  if (idMatch) { topicId = idMatch[1]; }" +
+                                  "}" +
+                                  "if (!topicId) { AndroidBridge.onError('无法识别当前相册，请确认已经点进了某个相册里面，再点下载按钮！'); return; }" +
                                   "var cookies = document.cookie;" +
                                   "var uinMatch = cookies.match(/uin=o?(\\d+)/);" +
                                   "var uin = uinMatch ? uinMatch[1] : '';" +
@@ -177,6 +191,7 @@ jobs:
                                   "  var end = data.lastIndexOf(')');" +
                                   "  var jsonStr = (start !== -1 && end !== -1) ? data.substring(start + 1, end) : data;" +
                                   "  var json = JSON.parse(jsonStr);" +
+                                  "  if (!json.data || !json.data.photoList) { AndroidBridge.onError('接口未返回照片列表，可能相册为空。'); return; }" +
                                   "  var photoList = json.data.photoList;" +
                                   "  var urls = [];" +
                                   "  for (var i = 0; i < photoList.length; i++) {" +
@@ -211,6 +226,19 @@ jobs:
                       tv.setPadding(40, 40, 40, 40);
                       setContentView(tv);
                   }
+              }
+
+              // ★★★ 核心修复：在 App 退出时，把 Cookie 强行刷入手机磁盘 ★★★
+              @Override
+              protected void onPause() {
+                  super.onPause();
+                  CookieManager.getInstance().flush();
+              }
+
+              @Override
+              protected void onDestroy() {
+                  super.onDestroy();
+                  CookieManager.getInstance().flush();
               }
 
               private void downloadMediaInBackground(org.json.JSONArray urls) {
